@@ -1,22 +1,21 @@
-// SmartWaste Nagpur - Core Application Logic
+// SmartWaste Nagpur - Core Logic
 
-// Predefined Coordinates & Smooth Routes
+// Coordinates & Smooth Interpolated Route
 const citizenLat = 21.1290;
 const citizenLng = 79.0565;
-const DEMO_SEGMENT_DURATION = 1000; // 1 second per tick
+const DEMO_SEGMENT_DURATION = 1000;
 
-// Smooth Interpolated Truck Route (Distance linear drop hone ke liye)
+// Route mapped with specific Target Areas
 const truckRoute = [
-    [21.1250, 79.0520], // ~500m
+    [21.1250, 79.0520], // Starting
     [21.1260, 79.0530], // ~390m
     [21.1270, 79.0540], // ~270m
-    [21.1280, 79.0550], // ~150m
-    [21.1285, 79.0558], // ~100m
-    [21.1288, 79.0562], // ~50m (Stop Area 1 - Citizen)
-    [21.1290, 79.0565], // 0m Doorstep
-    [21.1298, 79.0572], // Area 2 towards
-    [21.1308, 79.0580], // Area 2 (Stop)
-    [21.1315, 79.0568], // Area 3
+    [21.1280, 79.0550], // Area 1: VNIT Campus Chowk
+    [21.1288, 79.0562], // Stop Area (50m zone)
+    [21.1290, 79.0565], // Area 2: Bajaj Nagar (Citizen House)
+    [21.1298, 79.0572], // Area 3: IT Park Road
+    [21.1308, 79.0580], // Area 4: Shankar Nagar Chowk
+    [21.1315, 79.0568], // Area 5: Laxmi Nagar Zone
     [21.1270, 79.0528]  // Reset Loop
 ];
 
@@ -24,66 +23,43 @@ const evAutoRoute = [
     [21.1210, 79.0480], // Depot
     [21.1235, 79.0510],
     [21.1260, 79.0535],
-    [21.1285, 79.0558], // ~50m arrival
+    [21.1285, 79.0558],
     [21.1290, 79.0565], // Citizen Complaint Spot
     [21.1305, 79.0565]
 ];
 
-// App State Management
+// App State
 const state = {
     greenCredits: 120,
     verifiedCollections: 128,
     activeComplaintsCount: 0,
     complaints: [],
-    activeRequest: null,
     
     // Simulation state
     activeRoute: truckRoute,
-    activeVehicleType: 'truck', // 'truck' or 'ev_auto'
+    activeVehicleType: 'truck',
     routeIndex: 0,
     citizenDistance: 9999,
     simulationPaused: false,
     stoppedForPickup: false,
-    stopTimer: null
+    
+    // 5 Target Areas Status for NMC Dashboard
+    targetAreas: [
+        { id: 1, name: "Area 1: VNIT Campus Chowk", routeIndex: 3, status: "pending" },
+        { id: 2, name: "Area 2: Bajaj Nagar (Citizen Spot)", routeIndex: 5, status: "pending" },
+        { id: 3, name: "Area 3: IT Park Road", routeIndex: 6, status: "pending" },
+        { id: 4, name: "Area 4: Shankar Nagar Chowk", routeIndex: 7, status: "pending" },
+        { id: 5, name: "Area 5: Laxmi Nagar Zone", routeIndex: 8, status: "pending" }
+    ]
 };
 
-// Leaflet Map Globals
+// Map & Audio Globals
 let map = null;
 let truckMarker = null;
 let evMarker = null;
 let routePolyline = null;
 let citizenMarker = null;
-let audioCtx = null;
 
-function initAudioOnInteraction() {
-    if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume().catch(() => {});
-    }
-}
-
-function playAutoSound() {
-    try {
-        initAudioOnInteraction();
-        if (!audioCtx || audioCtx.state !== 'running') return;
-        
-        let osc1 = audioCtx.createOscillator();
-        let gain1 = audioCtx.createGain();
-        osc1.type = 'square';
-        osc1.frequency.setValueAtTime(880, audioCtx.currentTime);
-        gain1.gain.setValueAtTime(0.25, audioCtx.currentTime);
-        osc1.connect(gain1);
-        gain1.connect(audioCtx.destination);
-        osc1.start(audioCtx.currentTime);
-        osc1.stop(audioCtx.currentTime + 0.15);
-    } catch(e) {
-        console.error("Audio error:", e);
-    }
-}
-
-// Haversine Distance Helper
 function getDistanceMeters(lat1, lon1, lat2, lon2) {
     const R = 6371000;
     const phi1 = lat1 * Math.PI / 180;
@@ -98,7 +74,7 @@ function getDistanceMeters(lat1, lon1, lat2, lon2) {
     return Math.round(R * c);
 }
 
-// Initialize Map
+// Map Setup
 function initMap() {
     const mapElement = document.getElementById('map');
     if (!mapElement) return;
@@ -109,33 +85,36 @@ function initMap() {
         attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    const truckIcon = L.divIcon({ html: '<div style="font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">🚛</div>', iconSize: [35, 35], iconAnchor: [17, 17] });
-    const miniAutoIcon = L.divIcon({ html: '<div style="font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">🛺</div>', iconSize: [35, 35], iconAnchor: [17, 17] });
+    const truckIcon = L.divIcon({ html: '<div style="font-size: 32px;">🚛</div>', iconSize: [35, 35], iconAnchor: [17, 17] });
+    const miniAutoIcon = L.divIcon({ html: '<div style="font-size: 32px;">🛺</div>', iconSize: [35, 35], iconAnchor: [17, 17] });
 
-    // Markers Initialization
-    truckMarker = L.marker(truckRoute[0], { icon: truckIcon }).addTo(map).bindPopup("Main Waste Truck");
-    evMarker = L.marker(evAutoRoute[0], { icon: miniAutoIcon }).bindPopup("<b>Express Mini-EV Auto</b><br>Missed Pickup Unit");
+    truckMarker = L.marker(truckRoute[0], { icon: truckIcon }).addTo(map).bindPopup("Main Waste Truck #04");
+    evMarker = L.marker(evAutoRoute[0], { icon: miniAutoIcon }).bindPopup("<b>NMC Mini-EV Auto</b><br>Complaint Pickup Unit");
 
     routePolyline = L.polyline(truckRoute, { color: '#27ae60', weight: 4, dashArray: '5, 5' }).addTo(map);
 
     citizenMarker = L.marker([citizenLat, citizenLng], {
         icon: L.divIcon({ html: '<div style="font-size: 24px;">🏠</div>', iconSize: [25, 25], iconAnchor: [12, 12] })
-    }).addTo(map).bindPopup("<b>Citizen Location (Area 1)</b>");
+    }).addTo(map).bindPopup("<b>Citizen House Spot</b>");
 }
 
-// Render UI Components & Distance Updates
+// Dynamic UI Render (NMC Dashboard + Citizen View)
 function renderUI() {
+    const citizenPoints = document.getElementById('citizenPoints');
+    const verifiedCount = document.getElementById('verifiedCount');
+    const complaintCount = document.getElementById('complaintCount');
+    
+    if (citizenPoints) citizenPoints.innerText = state.greenCredits;
+    if (verifiedCount) verifiedCount.innerText = state.verifiedCollections + " Houses";
+    if (complaintCount) complaintCount.innerText = state.activeComplaintsCount;
+
     const currentPos = state.activeRoute[state.routeIndex];
     state.citizenDistance = getDistanceMeters(currentPos[0], currentPos[1], citizenLat, citizenLng);
 
-    // Dynamic Distance & ETA Update
     const distanceVal = document.getElementById('distanceVal');
     const etaEl = document.getElementById('eta');
-    const statusBanner = document.getElementById('audioBanner');
 
-    if (distanceVal) {
-        distanceVal.innerText = state.citizenDistance + " m";
-    }
+    if (distanceVal) distanceVal.innerText = state.citizenDistance + " m";
 
     if (etaEl) {
         if (state.citizenDistance <= 50) {
@@ -146,45 +125,56 @@ function renderUI() {
         }
     }
 
-    if (statusBanner) {
-        if (state.citizenDistance <= 50) {
-            statusBanner.innerText = `🚨 ${state.activeVehicleType === 'truck' ? 'MAIN TRUCK' : 'MINI-EV AUTO'} AT AREA 1 STOP!`;
-            statusBanner.style.display = 'block';
-        } else {
-            statusBanner.style.display = 'none';
-        }
+    // NMC Dashboard: Target Areas Live Status Table/List Render
+    const nmcAreaContainer = document.getElementById('nmcAreaStatusList');
+    if (nmcAreaContainer) {
+        nmcAreaContainer.innerHTML = state.targetAreas.map(area => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid #eee; background: ${area.status === 'collected' ? '#e8f8f5' : '#fff'}; margin-bottom: 5px; border-radius: 6px;">
+                <span style="font-weight: 600; font-size: 14px; color: #2c3e50;">${area.name}</span>
+                <span style="padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; ${area.status === 'collected' ? 'background:#27ae60; color:#fff;' : 'background:#f39c12; color:#fff;'}">
+                    ${area.status === 'collected' ? '✅ COLLECTED' : '⏳ PENDING'}
+                </span>
+            </div>
+        `).join('');
     }
 }
 
-// Main Simulation Tick (Continuous Movement & 5-Second Stop Logic)
+// Live Area Tracking: Updates Area status on NMC Dashboard as Truck moves
+function updateTargetAreaStatus(currentRouteIndex) {
+    const area = state.targetAreas.find(a => a.routeIndex === currentRouteIndex);
+    if (area && area.status !== 'collected') {
+        area.status = 'collected';
+        renderUI();
+    }
+}
+
+// Main Simulation Loop
 function simulationTick() {
     if (state.simulationPaused) return;
 
     const currentPos = state.activeRoute[state.routeIndex];
     state.citizenDistance = getDistanceMeters(currentPos[0], currentPos[1], citizenLat, citizenLng);
 
-    // Check 50m Stop Condition
+    // Auto update NMC Dashboard when truck reaches specific route indexes
+    updateTargetAreaStatus(state.routeIndex);
+
+    // 50m Auto-Stop Rule
     if (state.citizenDistance <= 50 && !state.stoppedForPickup) {
         state.stoppedForPickup = true;
-        state.simulationPaused = true; // Stop vehicle movement
-        playAutoSound();
+        state.simulationPaused = true;
         renderUI();
 
-        // Resume after 5 Seconds
         setTimeout(() => {
             state.simulationPaused = false;
         }, 5000);
         return;
     }
 
-    // Reset stop trigger once vehicle moves away from 50m zone
     if (state.citizenDistance > 60) {
         state.stoppedForPickup = false;
     }
 
-    // Move to next point in route
     state.routeIndex = (state.routeIndex + 1) % state.activeRoute.length;
-    
     const newLatLng = state.activeRoute[state.routeIndex];
     
     if (state.activeVehicleType === 'truck') {
@@ -197,42 +187,101 @@ function simulationTick() {
     renderUI();
 }
 
-// Function: Register Missed Pickup Complaint & Dispatch Mini-EV Auto
-function registerMissedPickupComplaint(locationName = "Area 1 - Doorstep") {
-    state.activeComplaintsCount += 1;
-    const newComplaint = {
-        id: Date.now(),
-        location: locationName,
-        status: 'enroute'
-    };
-    state.complaints.push(newComplaint);
-
-    alert(`Complaint Registered! Main truck bypassed. Dispatching NMC Mini-EV Auto to ${locationName}.`);
-
-    // HIDE BADA TRUCK & SHOW ONLY MINI AUTO
-    if (map) {
-        if (truckMarker) map.removeLayer(truckMarker); // Hide Truck
-        if (evMarker) evMarker.addTo(map);             // Show Mini-EV Auto
-    }
-
-    // Switch Route to Mini-EV Route
-    state.activeVehicleType = 'ev_auto';
-    state.activeRoute = evAutoRoute;
-    state.routeIndex = 0;
-    state.stoppedForPickup = false;
-    state.simulationPaused = false;
+// STEP 1: GREEN BUTTON (Only confirms collection notice - NO CREDITS YET)
+function handleGarbagePickup() {
+    alert("✅ Garbage Picked Up!\n\nStatus: Pending Helper AI Camera Scan.\nCredits will be added once AI verifies waste separation.");
 }
 
-// Window Event Listeners & Button Handling
+// STEP 2: HELPER AI CAMERA SCAN (Grants Credits IF Separated)
+function scanWasteWithHopperAI() {
+    const scanResultEl = document.getElementById('aiScanResult');
+    if (scanResultEl) {
+        scanResultEl.innerText = "📷 Scanning Hopper Garbage via AI Camera...";
+        
+        setTimeout(() => {
+            const isSegregated = Math.random() > 0.3; // 70% chance of segregated waste
+            
+            if (isSegregated) {
+                state.greenCredits += 20; // ADD CREDITS HERE ONLY
+                state.verifiedCollections += 1;
+                scanResultEl.innerText = "✅ AI Scan Status: SEPARATED (Soohka/Geela Alag Hai).\n🎉 +20 Green Credits Rewarded to Citizen!";
+                scanResultEl.style.color = "#27ae60";
+            } else {
+                scanResultEl.innerText = "❌ AI Scan Status: UNSEGREGATED (Kachra Mix Hai).\n⚠️ 0 Credits Rewarded.";
+                scanResultEl.style.color = "#c0392b";
+            }
+            renderUI();
+        }, 2000);
+    }
+}
+
+// RED BUTTON: Complaint Registration & Mini-EV Dispatch
+function handleMissedPickup() {
+    const userLocation = prompt("⚠️ Missed Pickup Complaint\n\nEnter Location / Landmark to register complaint:", "Bajaj Nagar, House #42");
+    
+    if (userLocation !== null && userLocation.trim() !== "") {
+        state.activeComplaintsCount += 1;
+
+        alert(`✅ Complaint Registered Successfully!\n\nTarget Location: ${userLocation}\nStatus: Dispatching NMC Express Mini-EV Auto...`);
+
+        // Hide Truck, Show Mini-EV Auto
+        if (map) {
+            if (truckMarker) map.removeLayer(truckMarker);
+            if (evMarker) evMarker.addTo(map);
+        }
+
+        // Switch active tracker to Mini Auto
+        state.activeVehicleType = 'ev_auto';
+        state.activeRoute = evAutoRoute;
+        state.routeIndex = 0;
+        state.stoppedForPickup = false;
+        state.simulationPaused = false;
+
+        renderUI();
+    }
+}
+
+// Top Dashboard Tab Switcher Fix
+function setupDashboardTabs() {
+    const tabs = document.querySelectorAll('.dashboard-tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetId = tab.getAttribute('data-target');
+            if (!targetId) return;
+
+            document.querySelectorAll('.dashboard-view').forEach(view => {
+                view.style.display = 'none';
+            });
+            tabs.forEach(t => t.classList.remove('active'));
+
+            const targetView = document.getElementById(targetId);
+            if (targetView) {
+                targetView.style.display = 'block';
+                tab.classList.add('active');
+            }
+
+            if (targetId === 'citizenView' && map) {
+                setTimeout(() => map.invalidateSize(), 200);
+            }
+        });
+    });
+}
+
+// Event Listeners
 document.addEventListener("DOMContentLoaded", () => {
     initMap();
+    setupDashboardTabs();
     setInterval(simulationTick, DEMO_SEGMENT_DURATION);
 
-    // Complaint Button Trigger Listener (agar UI par ID 'complainBtn' ya similar button ho)
-    const complainBtn = document.getElementById('complainBtn');
-    if (complainBtn) {
-        complainBtn.addEventListener('click', () => {
-            registerMissedPickupComplaint("Bajaj Nagar (Area 1)");
-        });
-    }
+    // Citizen Green Button
+    const greenBtn = document.getElementById('handoverBtn') || document.getElementById('pickupBtn');
+    if (greenBtn) greenBtn.addEventListener('click', handleGarbagePickup);
+
+    // Citizen Red Button
+    const redBtn = document.getElementById('complainBtn') || document.getElementById('missedBtn');
+    if (redBtn) redBtn.addEventListener('click', handleMissedPickup);
+
+    // Helper AI Scan Button
+    const aiScanBtn = document.getElementById('aiScanBtn');
+    if (aiScanBtn) aiScanBtn.addEventListener('click', scanWasteWithHopperAI);
 });
