@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartWaste Nagpur - AI & Geo-Fenced Portal</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="index.css" />
+</head>
+<body onclick="initAudioOnInteraction()">
+
+    <div class="nav-tabs">
+        <button class="tab-btn active" onclick="switchView('citizen')">📱 Citizen View</button>
+        <button class="tab-btn" onclick="switchView('worker')">🎥 Vehicle AI Camera Console</button>
+        <button class="tab-btn" onclick="switchView('admin')">🏛️ NMC Control Room</button>
+    </div>
+
+    <div id="audioBanner">🚨 VEHICLE ARRIVED AT YOUR DOORSTEP!</div>
+
+    <!-- 1. CITIZEN VIEW -->
+    <div id="citizenView" class="view-section active">
+        <div class="header">
+            <h1>🚛 SmartWaste Nagpur <span class="tech-badge">Geo-Protected</span></h1>
+            <div class="reward-badge">🎟️ Green Credits: <span id="citizenPoints">120</span> Pts <span id="creditBadge"></span></div>
+        </div>
+
+        <div class="tracking-status" id="activeVehicleLabel">📡 Active Tracking: Standard Garbage Truck #04</div>
+        
+        <!-- Simulation Target Tracking Panel -->
+        <div id="simulationTrackingInfo" style="background: white; border: 1px solid #ddd; padding: 12px; margin-bottom: 12px; font-size: 13px; border-radius: 8px; line-height: 1.6; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
+                <div>🚚 <b>Status:</b> <span id="trackStatus" style="font-weight: bold; color: #2980b9;">En Route</span></div>
+                <div>📍 <b>Target Stop:</b> <span id="trackCurrentArea" style="font-weight: bold; color: #d35400;">VNIT Chowk (Area 1)</span></div>
+                <div>⏭️ <b>Next Stop:</b> <span id="trackNextArea" style="color: #555;">Bajaj Nagar (Area 2)</span></div>
+            </div>
+            <div style="margin-top: 6px; border-top: 1px dashed #eee; padding-top: 6px; font-size: 12px; color: #666;">
+                ✅ <b>Completed Stops:</b> <span id="trackCompletedAreas">None</span>
+            </div>
+        </div>
+
+        <!-- Active Complaint Status Panel (Hidden by default) -->
+        <div id="activeComplaintPanel" style="display: none; background: #fff3cd; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 12px; font-size: 13px; border-radius: 8px; line-height: 1.6; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="font-weight: bold; color: #856404; margin-bottom: 6px;" id="complaintHeader">⚠️ Missed Pickup Request</div>
+            <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
+                <div>🆔 <b>Complaint ID:</b> <span id="complaintIdVal">#1</span></div>
+                <div>📍 <b>Location:</b> <span id="complaintLocationVal">Bajaj Nagar</span></div>
+                <div>🚨 <b>Status:</b> <span id="complaintStatusVal" class="dispatch-status status-pending" style="padding: 2px 8px; border-radius: 10px; font-size: 11px;">Pending Dispatch</span></div>
+            </div>
+        </div>
+
+        <div class="dashboard">
+            <div class="card">
+                <h3>Ward Location</h3>
+                <div class="value">VNIT / Bajaj Nagar</div>
+            </div>
+            <div class="card">
+                <h3>Vehicle Proximity</h3>
+                <div class="value" id="distanceVal" style="color: #e67e22;">Checking...</div>
+            </div>
+            <div class="card">
+                <h3>Arrival Status</h3>
+                <div class="value" id="eta" style="color: #e67e22;">5 Mins</div>
+            </div>
+            <div class="card">
+                <h3>Pickup & Credit Status</h3>
+                <div class="value" id="collectionStatus" style="color: #e67e22;">⏳ Pending Pickup</div>
+            </div>
+        </div>
+
+        <div id="map"></div>
+
+        <div class="action-bar">
+            <button class="btn btn-handover" onclick="citizenMarkHandover()">🗑️ Request Doorstep Pickup (Geo-Check)</button>
+            <button class="btn btn-report" onclick="reportMissedGarbage()">⚠️ Missed Pickup Request</button>
+        </div>
+    </div>
+
+    <!-- 2. TRUCK HOPPER CAMERA & AI CONSOLE -->
+    <div id="workerView" class="view-section">
+        <div class="header">
+            <h1>🎥 Automated Truck Hopper AI Camera <span class="tech-badge">Hands-Free AI</span></h1>
+            <p style="margin:0; font-size: 13px; color: #666;">Vehicle: MH-31-EV-402 | Camera Feed: Overhead Loading Bin</p>
+        </div>
+
+        <div class="dashboard">
+            <div class="card">
+                <h3>Current Zone</h3>
+                <div class="value">Ward 4 - Bajaj Nagar</div>
+            </div>
+            <div class="card">
+                <h3>Auto AI Analysis</h3>
+                <div class="value" id="aiScanStatus" style="color: #8e44ad;">Waiting Hopper Dump...</div>
+            </div>
+            <div class="card">
+                <h3>Worker Action Required</h3>
+                <div class="value" style="color: #27ae60;">NONE (0 Sec Automation)</div>
+            </div>
+        </div>
+
+        <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center;">
+            <h3>📹 Simulation: Waste Dumped Into Truck Hopper</h3>
+            <p id="workerInstruction">The wide-angle overhead camera automatically snaps waste images as the driver tips bins into the truck.</p>
+            
+            <div class="camera-box">
+                <div id="camFeedText">[ LIVE CAMERA FEED: OVERHEAD TRUCK HOPPER ]</div>
+                <div id="camSubText" style="font-size: 12px; color: #aaa; margin-top: 5px;">Status: Standby - Ready for auto-detection</div>
+            </div>
+
+            <div style="margin-top: 15px;">
+                <button class="btn btn-ai" onclick="triggerHopperAI('segregated')">🤖 Auto-Detect: Segregated Waste</button>
+                <button class="btn btn-report" onclick="triggerHopperAI('mixed')">⚠️ Auto-Detect: Mixed Waste</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. NMC ADMIN DASHBOARD -->
+    <div id="adminView" class="view-section">
+        <div class="header">
+            <h1>🏛️ NMC Smart Waste Control Center</h1>
+        </div>
+
+        <div class="dashboard">
+            <div class="card">
+                <h3>Active Fleet</h3>
+                <div class="value" style="color: #27ae60;">42 Vehicles</div>
+            </div>
+            <div class="card">
+                <h3>Verified Collections</h3>
+                <div class="value" id="verifiedCount" style="color: #27ae60;">128 Houses</div>
+            </div>
+            <div class="card">
+                <h3>Ward Segregation Rate</h3>
+                <div class="value" style="color: #8e44ad;">94% Wet/Dry</div>
+            </div>
+            <div class="card">
+                <h3>Active Complaints</h3>
+                <div class="value" id="complaintCount" style="color: #e74c3c;">0</div>
+            </div>
+        </div>
+
+        <!-- Admin Simulation Target Tracking Panel -->
+        <div id="adminSimulationTrackingInfo" style="background: white; border: 1px solid #ddd; padding: 12px; margin-bottom: 15px; font-size: 13px; border-radius: 8px; line-height: 1.6; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="font-size: 14px; font-weight: bold; color: #1e3c72; margin-bottom: 6px; border-bottom: 1px solid #eee; padding-bottom: 4px;">🚚 Fleet Simulation Tracking</div>
+            <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
+                <div><b>Vehicle Status:</b> <span id="adminTrackStatus" style="font-weight: bold; color: #2980b9;">En Route</span></div>
+                <div><b>Current Target:</b> <span id="adminTrackCurrentArea" style="font-weight: bold; color: #d35400;">VNIT Chowk (Area 1)</span></div>
+                <div><b>Next Stop:</b> <span id="adminTrackNextArea" style="color: #555;">Bajaj Nagar (Area 2)</span></div>
+            </div>
+            <div style="margin-top: 6px; border-top: 1px dashed #eee; padding-top: 6px; font-size: 12px; color: #666;">
+                <b>Completed Areas:</b> <span id="adminTrackCompletedAreas">None</span>
+            </div>
+        </div>
+
+        <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px;">
+            <h3>🚨 Real-Time Emergency & Missed Pickup Allocations</h3>
+            <ul id="incidentList">
+                <p><i>No pending missed pickup requests.</i></p>
+            </ul>
+        </div>
+
+        <div style="text-align: center; margin-top: 15px;">
+            <button class="btn btn-secondary" style="max-width: 250px;" onclick="resetDemoSimulation()">🔄 Reset Demo State</button>
+        </div>
+    </div>
+
+    <!-- 4. CUSTOM IN-PAGE MODALS -->
+    <!-- Alert Modal -->
+    <div id="customAlertModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 class="modal-title" id="alertTitle">Alert</h3>
+            <p class="modal-message" id="alertMessage">Message body goes here.</p>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-confirm" onclick="closeAlertModal()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prompt Modal -->
+    <div id="customPromptModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 class="modal-title" id="promptTitle">Input Required</h3>
+            <p class="modal-message" id="promptMessage">Please enter details:</p>
+            <input type="text" id="promptInput" class="modal-input">
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-cancel" onclick="closePromptModal(false)">Cancel</button>
+                <button class="modal-btn modal-btn-confirm" onclick="closePromptModal(true)">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="customConfirmModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 class="modal-title" id="confirmTitle">Confirm Action</h3>
+            <p class="modal-message" id="confirmMessage">Are you sure?</p>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-cancel" onclick="closeConfirmModal(false)">Cancel</button>
+                <button class="modal-btn modal-btn-confirm" onclick="closeConfirmModal(true)">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS and App logic -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
