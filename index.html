@@ -3,205 +3,263 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SmartWaste Nagpur - AI & Geo-Fenced Portal</title>
+    <title>SmartWaste Nagpur - Realtime Garbage Tracking System</title>
+    
+    <!-- Leaflet CSS for Map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="index.css" />
-</head>
-<body onclick="initAudioOnInteraction()">
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
 
+        body {
+            background-color: #f4f7f6;
+            color: #333;
+            padding: 15px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+
+        /* Top Dashboard Tabs Header */
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .dashboard-tab {
+            flex: 1;
+            padding: 12px 15px;
+            border: none;
+            background: #edf2f7;
+            color: #4a5568;
+            font-weight: 600;
+            font-size: 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .dashboard-tab.active {
+            background: #27ae60;
+            color: white;
+            box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
+        }
+
+        /* Dashboard Container Views */
+        .dashboard-view {
+            display: none;
+        }
+
+        .dashboard-view.active-view {
+            display: block;
+        }
+
+        /* Stats Bar */
+        .stats-container {
+            display: flex;
+            justify-content: space-between;
+            background: #e8f8f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #27ae60;
+        }
+
+        .stat-box {
+            font-size: 14px;
+        }
+
+        .stat-box b {
+            font-size: 18px;
+            color: #27ae60;
+        }
+
+        /* Map Styling */
+        #map {
+            height: 350px;
+            width: 100%;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #e2e8f0;
+        }
+
+        /* Distance Info & Banner */
+        .tracking-info {
+            display: flex;
+            justify-content: space-between;
+            background: #f8f9fa;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        #audioBanner {
+            background: #e74c3c;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            display: none;
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { opacity: 0.8; }
+            to { opacity: 1; }
+        }
+
+        /* Action Buttons */
+        .button-group {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-green {
+            background-color: #27ae60;
+            color: white;
+        }
+
+        .btn-red {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .btn-blue {
+            background-color: #2980b9;
+            color: white;
+        }
+
+        /* Helper Scanner UI */
+        .scanner-card {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px dashed #cbd5e0;
+        }
+
+        #aiScanResult {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            background: #fff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            white-space: pre-line;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- 1. TOP DASHBOARD NAVIGATION TABS -->
     <div class="nav-tabs">
-        <button class="tab-btn active" onclick="switchView('citizen')">📱 Citizen View</button>
-        <button class="tab-btn" onclick="switchView('worker')">🎥 Vehicle AI Camera Console</button>
-        <button class="tab-btn" onclick="switchView('admin')">🏛️ NMC Control Room</button>
+        <button class="dashboard-tab active" data-target="citizenView">Citizen Dashboard</button>
+        <button class="dashboard-tab" data-target="nmcView">NMC Admin Dashboard</button>
+        <button class="dashboard-tab" data-target="helperView">Helper / Collector Dashboard</button>
     </div>
 
-    <div id="audioBanner">🚨 VEHICLE ARRIVED AT YOUR DOORSTEP!</div>
+    <!-- ==================== CITIZEN VIEW ==================== -->
+    <div id="citizenView" class="dashboard-view active-view">
+        <h2 style="margin-bottom: 12px; color: #2c3e50;">Citizen Doorstep Tracking</h2>
 
-    <!-- 1. CITIZEN VIEW -->
-    <div id="citizenView" class="view-section active">
-        <div class="header">
-            <h1>🚛 SmartWaste Nagpur <span class="tech-badge">Geo-Protected</span></h1>
-            <div class="reward-badge">🎟️ Green Credits: <span id="citizenPoints">120</span> Pts <span id="creditBadge"></span></div>
+        <!-- Green Points & Summary Stats -->
+        <div class="stats-container">
+            <div class="stat-box">Green Credits: <br><b id="citizenPoints">120</b></div>
+            <div class="stat-box">Verified Pickup: <br><b id="verifiedCount">128 Houses</b></div>
+            <div class="stat-box">Active Complaints: <br><b id="complaintCount">0</b></div>
         </div>
 
-        <div class="tracking-status" id="activeVehicleLabel">📡 Active Tracking: Standard Garbage Truck #04</div>
-        
-        <!-- Simulation Target Tracking Panel -->
-        <div id="simulationTrackingInfo" style="background: white; border: 1px solid #ddd; padding: 12px; margin-bottom: 12px; font-size: 13px; border-radius: 8px; line-height: 1.6; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
-                <div>🚚 <b>Status:</b> <span id="trackStatus" style="font-weight: bold; color: #2980b9;">En Route</span></div>
-                <div>📍 <b>Target Stop:</b> <span id="trackCurrentArea" style="font-weight: bold; color: #d35400;">VNIT Chowk (Area 1)</span></div>
-                <div>⏭️ <b>Next Stop:</b> <span id="trackNextArea" style="color: #555;">Bajaj Nagar (Area 2)</span></div>
-            </div>
-            <div style="margin-top: 6px; border-top: 1px dashed #eee; padding-top: 6px; font-size: 12px; color: #666;">
-                ✅ <b>Completed Stops:</b> <span id="trackCompletedAreas">None</span>
-            </div>
-        </div>
+        <!-- Stop Alert Banner -->
+        <div id="audioBanner">🚨 TRUCK STOPPED AT YOUR AREA!</div>
 
-        <!-- Active Complaint Status Panel (Hidden by default) -->
-        <div id="activeComplaintPanel" style="display: none; background: #fff3cd; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 12px; font-size: 13px; border-radius: 8px; line-height: 1.6; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <div style="font-weight: bold; color: #856404; margin-bottom: 6px;" id="complaintHeader">⚠️ Missed Pickup Request</div>
-            <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
-                <div>🆔 <b>Complaint ID:</b> <span id="complaintIdVal">#1</span></div>
-                <div>📍 <b>Location:</b> <span id="complaintLocationVal">Bajaj Nagar</span></div>
-                <div>🚨 <b>Status:</b> <span id="complaintStatusVal" class="dispatch-status status-pending" style="padding: 2px 8px; border-radius: 10px; font-size: 11px;">Pending Dispatch</span></div>
-            </div>
-        </div>
-
-        <div class="dashboard">
-            <div class="card">
-                <h3>Ward Location</h3>
-                <div class="value">VNIT / Bajaj Nagar</div>
-            </div>
-            <div class="card">
-                <h3>Vehicle Proximity</h3>
-                <div class="value" id="distanceVal" style="color: #e67e22;">Checking...</div>
-            </div>
-            <div class="card">
-                <h3>Arrival Status</h3>
-                <div class="value" id="eta" style="color: #e67e22;">5 Mins</div>
-            </div>
-            <div class="card">
-                <h3>Pickup & Credit Status</h3>
-                <div class="value" id="collectionStatus" style="color: #e67e22;">⏳ Pending Pickup</div>
-            </div>
-        </div>
-
+        <!-- Live Map Container -->
         <div id="map"></div>
 
-        <div class="action-bar">
-            <button class="btn btn-handover" onclick="citizenMarkHandover()">🗑️ Request Doorstep Pickup (Geo-Check)</button>
-            <button class="btn btn-report" onclick="reportMissedGarbage()">⚠️ Missed Pickup Request</button>
+        <!-- Distance & ETA Card -->
+        <div class="tracking-info">
+            <div>Distance to Spot: <span id="distanceVal" style="color: #2980b9;">-- m</span></div>
+            <div>Status / ETA: <span id="eta" style="color: #e67e22;">-- Mins</span></div>
+        </div>
+
+        <!-- Action Buttons (Green Pickup & Red Complaint) -->
+        <div class="button-group">
+            <button id="handoverBtn" class="btn btn-green">
+                ✅ Garbage Handed Over
+            </button>
+            <button id="complainBtn" class="btn btn-red">
+                🚨 Report Missed Pickup
+            </button>
         </div>
     </div>
 
-    <!-- 2. TRUCK HOPPER CAMERA & AI CONSOLE -->
-    <div id="workerView" class="view-section">
-        <div class="header">
-            <h1>🎥 Automated Truck Hopper AI Camera <span class="tech-badge">Hands-Free AI</span></h1>
-            <p style="margin:0; font-size: 13px; color: #666;">Vehicle: MH-31-EV-402 | Camera Feed: Overhead Loading Bin</p>
+    <!-- ==================== NMC ADMIN VIEW ==================== -->
+    <div id="nmcView" class="dashboard-view">
+        <h2 style="margin-bottom: 8px; color: #2c3e50;">NMC Control Room</h2>
+        <p style="color: #7f8c8d; font-size: 14px; margin-bottom: 15px;">Real-time target area waste collection status:</p>
+        
+        <!-- Live Target Areas List (Rendered via App.js) -->
+        <div id="nmcAreaStatusList">
+            <!-- Dynamic area statuses will appear here -->
         </div>
+    </div>
 
-        <div class="dashboard">
-            <div class="card">
-                <h3>Current Zone</h3>
-                <div class="value">Ward 4 - Bajaj Nagar</div>
-            </div>
-            <div class="card">
-                <h3>Auto AI Analysis</h3>
-                <div class="value" id="aiScanStatus" style="color: #8e44ad;">Waiting Hopper Dump...</div>
-            </div>
-            <div class="card">
-                <h3>Worker Action Required</h3>
-                <div class="value" style="color: #27ae60;">NONE (0 Sec Automation)</div>
-            </div>
-        </div>
+    <!-- ==================== HELPER / COLLECTOR VIEW ==================== -->
+    <div id="helperView" class="dashboard-view">
+        <h2 style="margin-bottom: 8px; color: #2c3e50;">Helper Truck AI Scanner</h2>
+        <p style="color: #7f8c8d; font-size: 14px; margin-bottom: 15px;">Scan hopper garbage to verify waste segregation:</p>
 
-        <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center;">
-            <h3>📹 Simulation: Waste Dumped Into Truck Hopper</h3>
-            <p id="workerInstruction">The wide-angle overhead camera automatically snaps waste images as the driver tips bins into the truck.</p>
+        <div class="scanner-card">
+            <button id="aiScanBtn" class="btn btn-blue" style="max-width: 300px; margin: 0 auto;">
+                📷 Scan Hopper via AI Camera
+            </button>
             
-            <div class="camera-box">
-                <div id="camFeedText">[ LIVE CAMERA FEED: OVERHEAD TRUCK HOPPER ]</div>
-                <div id="camSubText" style="font-size: 12px; color: #aaa; margin-top: 5px;">Status: Standby - Ready for auto-detection</div>
-            </div>
-
-            <div style="margin-top: 15px;">
-                <button class="btn btn-ai" onclick="triggerHopperAI('segregated')">🤖 Auto-Detect: Segregated Waste</button>
-                <button class="btn btn-report" onclick="triggerHopperAI('mixed')">⚠️ Auto-Detect: Mixed Waste</button>
+            <!-- AI Scan Status Display Output -->
+            <div id="aiScanResult">
+                <b>Status:</b> Ready to scan hopper garbage...
             </div>
         </div>
     </div>
 
-    <!-- 3. NMC ADMIN DASHBOARD -->
-    <div id="nmcAreaStatusList" class="view-section">
-        <div class="header">
-            <h1>🏛️ NMC Smart Waste Control Center</h1>
-        </div>
+</div>
 
-        <div class="dashboard">
-            <div class="card">
-                <h3>Active Fleet</h3>
-                <div class="value" style="color: #27ae60;">42 Vehicles</div>
-            </div>
-            <div class="card">
-                <h3>Verified Collections</h3>
-                <div class="value" id="verifiedCount" style="color: #27ae60;">128 Houses</div>
-            </div>
-            <div class="card">
-                <h3>Ward Segregation Rate</h3>
-                <div class="value" style="color: #8e44ad;">94% Wet/Dry</div>
-            </div>
-            <div class="card">
-                <h3>Active Complaints</h3>
-                <div class="value" id="complaintCount" style="color: #e74c3c;">0</div>
-            </div>
-        </div>
+<!-- Leaflet JavaScript Library -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-        <!-- Admin Simulation Target Tracking Panel -->
-        <div id="adminSimulationTrackingInfo" style="background: white; border: 1px solid #ddd; padding: 12px; margin-bottom: 15px; font-size: 13px; border-radius: 8px; line-height: 1.6; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <div style="font-size: 14px; font-weight: bold; color: #1e3c72; margin-bottom: 6px; border-bottom: 1px solid #eee; padding-bottom: 4px;">🚚 Fleet Simulation Tracking</div>
-            <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
-                <div><b>Vehicle Status:</b> <span id="adminTrackStatus" style="font-weight: bold; color: #2980b9;">En Route</span></div>
-                <div><b>Current Target:</b> <span id="adminTrackCurrentArea" style="font-weight: bold; color: #d35400;">VNIT Chowk (Area 1)</span></div>
-                <div><b>Next Stop:</b> <span id="adminTrackNextArea" style="color: #555;">Bajaj Nagar (Area 2)</span></div>
-            </div>
-            <div style="margin-top: 6px; border-top: 1px dashed #eee; padding-top: 6px; font-size: 12px; color: #666;">
-                <b>Completed Areas:</b> <span id="adminTrackCompletedAreas">None</span>
-            </div>
-        </div>
+<!-- Core Application Logic Script -->
+<script src="app.js"></script>
 
-        <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px;">
-            <h3>🚨 Real-Time Emergency & Missed Pickup Allocations</h3>
-            <ul id="incidentList">
-                <p><i>No pending missed pickup requests.</i></p>
-            </ul>
-        </div>
-
-        <div style="text-align: center; margin-top: 15px;">
-            <button class="btn btn-secondary" style="max-width: 250px;" onclick="resetDemoSimulation()">🔄 Reset Demo State</button>
-        </div>
-    </div>
-
-    <!-- 4. CUSTOM IN-PAGE MODALS -->
-    <!-- Alert Modal -->
-    <div id="customAlertModal" class="modal-overlay">
-        <div class="modal-content">
-            <h3 class="modal-title" id="alertTitle">Alert</h3>
-            <p class="modal-message" id="alertMessage">Message body goes here.</p>
-            <div class="modal-buttons">
-                <button class="modal-btn modal-btn-confirm" onclick="closeAlertModal()">OK</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Prompt Modal -->
-    <div id="customPromptModal" class="modal-overlay">
-        <div class="modal-content">
-            <h3 class="modal-title" id="promptTitle">Input Required</h3>
-            <p class="modal-message" id="promptMessage">Please enter details:</p>
-            <input type="text" id="promptInput" class="modal-input">
-            <div class="modal-buttons">
-                <button class="modal-btn modal-btn-cancel" onclick="closePromptModal(false)">Cancel</button>
-                <button class="modal-btn modal-btn-confirm" onclick="closePromptModal(true)">Submit</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Confirm Modal -->
-    <div id="customConfirmModal" class="modal-overlay">
-        <div class="modal-content">
-            <h3 class="modal-title" id="confirmTitle">Confirm Action</h3>
-            <p class="modal-message" id="confirmMessage">Are you sure?</p>
-            <div class="modal-buttons">
-                <button class="modal-btn modal-btn-cancel" onclick="closeConfirmModal(false)">Cancel</button>
-                <button class="modal-btn modal-btn-confirm" onclick="closeConfirmModal(true)">Confirm</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Leaflet JS and App logic -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js"></script>
 </body>
 </html>
